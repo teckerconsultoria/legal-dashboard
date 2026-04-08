@@ -12,7 +12,7 @@ async function getOrders() {
   const { data: orders } = await supabase
     .from('orders')
     .select('*, order_items(*, sku_catalog(*))')
-    .or(`user_id.eq.${user.id},user_id.is.null`)
+    .or(`user_id.eq.${user.id},customer_email.eq.${user.email}`)
     .order('created_at', { ascending: false });
 
   return orders || [];
