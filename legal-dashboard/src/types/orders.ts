@@ -1,4 +1,6 @@
-export type OrderStatus = 
+import type { FulfillmentSchema } from './fulfillment'
+
+export type OrderStatus =
   | 'created'
   | 'payment_pending'
   | 'paid'
@@ -15,6 +17,11 @@ export interface Order {
   stripe_session_id: string | null;
   stripe_payment_intent_id: string | null;
   customer_email: string | null;
+  // Fulfillment inputs (coletados no checkout)
+  target_oab_estado: string | null;
+  target_oab_numero: string | null;
+  target_numero_cnj: string | null;
+  assigned_operator_id: string | null;
   created_at: string;
   updated_at: string;
   items?: OrderItem[];
@@ -39,6 +46,7 @@ export interface SKU {
   is_active: boolean;
   features: string[];
   highlights: string[];
+  fulfillment_schema: FulfillmentSchema;
   created_at: string;
   updated_at: string;
 }

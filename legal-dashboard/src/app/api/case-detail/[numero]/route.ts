@@ -1,54 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server'
-
-const MOCK_MOVIMENTACOES = [
-  { data: "08/04/2026", tipo: "Andamento", conteudo: "Julgado procedido. Sentença publicada." },
-  { data: "05/04/2026", tipo: "Decisão", conteudo: "Recebimento da inicial. Distribuído para a Vara X." },
-  { data: "28/03/2026", tipo: "Intimação", conteudo: "Citação electronica有效. Prazo para defesa iniciado." },
-  { data: "20/03/2026", tipo: "Andamento", conteudo: "Audiência redesignada para nova data." },
-  { data: "15/03/2026", tipo: "Decisão", conteudo: "Diligência cumplida. Certifico." },
-  { data: "10/03/2026", tipo: "Andamento", conteudo: "Autos físicos encaminhados ao contador." },
-  { data: "02/03/2026", tipo: "Petição", conteudo: "Petição de cumprimento protocolada." },
-  { data: "25/02/2026", tipo: "Andamento", conteudo: "Recebimento dos autos físicos." },
-  { data: "18/02/2026", tipo: "Decisão", conteudo: "Determinação de diligência." },
-  { data: "10/02/2026", tipo: "Andamento", conteudo: "Distribuição realizada." }
-]
+import { createEscavadorClient } from '@/lib/escavador'
+import { cacheGet, cacheSet } from '@/lib/cache'
+import { apiRateLimiter } from '@/lib/rate-limit'
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ numero: string }> }
 ) {
   const { numero } = await params
-  
-  await new Promise(r => setTimeout(r, 600))
 
-  const days = Math.floor(Math.random() * 60) + 1
-  const status = days <= 30 ? "ATIVO" : "INATIVO"
-  const date = new Date()
-  date.setDate(date.getDate() - days)
-
-  const statusData = {
-    data_ultima_verificacao: date.toISOString(),
-    ultima_verificacao: {
-      status,
-      solicitado_em: date.toISOString(),
-      concluido_em: date.toISOString()
-    }
+  const token = process.env.ESCAVADOR_API_TOKEN
+  if (!token) {
+    return NextResponse.json({ error: 'Escavador API not configured' }, { status: 503 })
   }
 
-  const movimentacoes = {
-    items: MOCK_MOVIMENTACOES
+  const ip = request.headers.get('x-forwarded-for') ?? 'unknown'
+  if (!apiRateLimiter.check(ip)) {
+    return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 })
   }
 
-  const capa = {
-    numero,
-    subject: "Ação de Cobrança",
-    classe: "Procedimento Comum",
-    vara: "1ª Vara Cível",
-    natureza: "Cível",
-    valor_causa: "R$ 50.000,00",
-    polo_ativo: "Empresa XYZ Ltda",
-    polo_passivo: "João Silva Santos"
-  }
+  const cacheKey = `escavador:case:${numero}`
+  const cached = cacheGet<object>(cacheKey)
+  if (cached) return NextResponse.json(cached)
 
-  return NextResponse.json({ capa, movimentacoes, status: statusData })
+  try {
+    const client = createEscavadorClient(token)
+    const [capa, movimentacoes, statusData] = await Promise.all([
+      client.getCaseCNJ(numero),
+      client.getMovimentacoes(numero),
+      client.getStatusAtualizacao(numero),
+    ])
+
+    const response = { capa, movimentacoes, status: statusData }
+    cacheSet(cacheKey, response, 120000) // 2 min — case details change more often
+    return NextResponse.json(response)
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Upstream error'
+    return NextResponse.json({ error: msg }, { status: 502 })
+  }
 }

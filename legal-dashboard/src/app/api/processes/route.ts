@@ -1,48 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createEscavadorClient, ProcessItem } from '@/lib/escavador'
+import { cacheGet, cacheSet } from '@/lib/cache'
+import { apiRateLimiter } from '@/lib/rate-limit'
 
-const MOCK_PROCESSES = Array.from({ length: 50 }, (_, i) => ({
-  numero: `${String(i + 1).padStart(7, '0')}-18.2023.8.26.00${(i % 9) + 1}`,
-  subject: [
-    "Ação de Cobrança",
-    "Procedimento Comum",
-    "Ação de Alimentos",
-    "Embargos",
-    "Execução Fiscal",
-    "Mandado de Segurança",
-    "Reclamação Trabalhista",
-    "Ação Civil Pública",
-    "Divórcio"
-  ][i % 9],
-  fonte_sigla: ["TJSP", "TJMG", "TJRJ", "TJRS", "TJBA", "TJPE", "TJCE", "TJPR", "TJGO"][i % 9],
-  grau: ["1º", "2º"][i % 2]
-}))
-
-const DAYS_ARRAY = [2, 5, 8, 12, 15, 22, 28, 35, 42, 55, 78, 95, 120]
-
-export async function GET(request: NextRequest) {
-  const searchParams = request.nextUrl.searchParams
-  const oab_estado = searchParams.get('oab_estado')
-  const oab_numero = searchParams.get('oab_numero')
-  const limit = parseInt(searchParams.get('limit') || '100')
-
-  if (!oab_estado || !oab_numero) {
-    return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 })
-  }
-
-  await new Promise(r => setTimeout(r, 600))
-
-  const items = MOCK_PROCESSES.slice(0, limit)
-
-  const processes = items.map((p, i) => {
-    const days = DAYS_ARRAY[i % DAYS_ARRAY.length]
-    const status = days <= 30 ? "ATIVO" : "INATIVO"
-    return {
-      ...p,
-      daysSinceLastCheck: days,
-      status
-    }
-  })
-
+function buildResponse(processes: ProcessItem[], total: number) {
   let staleCount = 0
   let activeCount = 0
   let inactiveCount = 0
@@ -54,11 +15,11 @@ export async function GET(request: NextRequest) {
   })
 
   const metrics = {
-    total: 156,
-    stalePercent: Math.round((staleCount / processes.length) * 100),
+    total,
+    stalePercent: processes.length > 0 ? Math.round((staleCount / processes.length) * 100) : 0,
     activeCount,
     inactiveCount,
-    sampleProcessed: processes.length
+    sampleProcessed: processes.length,
   }
 
   const histogram = [
@@ -66,41 +27,66 @@ export async function GET(request: NextRequest) {
     { range: '8-15 dias', count: processes.filter(p => p.daysSinceLastCheck > 7 && p.daysSinceLastCheck <= 15).length },
     { range: '16-30 dias', count: processes.filter(p => p.daysSinceLastCheck > 15 && p.daysSinceLastCheck <= 30).length },
     { range: '31-60 dias', count: processes.filter(p => p.daysSinceLastCheck > 30 && p.daysSinceLastCheck <= 60).length },
-    { range: '60+ dias', count: processes.filter(p => p.daysSinceLastCheck > 60).length }
+    { range: '60+ dias', count: processes.filter(p => p.daysSinceLastCheck > 60).length },
   ]
 
   const tribunalCounts: Record<string, number> = {}
   processes.forEach(p => {
-    tribunalCounts[p.fonte_sigla] = (tribunalCounts[p.fonte_sigla] || 0) + 1
+    if (p.fonte_sigla) {
+      tribunalCounts[p.fonte_sigla] = (tribunalCounts[p.fonte_sigla] || 0) + 1
+    }
   })
-  
+
   const distributionByTribunal = Object.entries(tribunalCounts)
     .map(([tribunal, count]) => ({
       tribunal,
       count,
-      percent: Math.round((count / processes.length) * 100)
+      percent: Math.round((count / processes.length) * 100),
     }))
     .sort((a, b) => b.count - a.count)
 
   const hotCold = {
     quente: processes.filter(p => p.daysSinceLastCheck <= 7).length,
     morno: processes.filter(p => p.daysSinceLastCheck > 7 && p.daysSinceLastCheck <= 30).length,
-    frio: processes.filter(p => p.daysSinceLastCheck > 30).length
+    frio: processes.filter(p => p.daysSinceLastCheck > 30).length,
   }
 
-  const updateFunnel = [
-    { status: 'PENDENTE', count: 12 },
-    { status: 'SUCESSO', count: 89 },
-    { status: 'ERRO', count: 23 },
-    { status: 'NAO_ENCONTRADO', count: 8 }
-  ]
+  return { metrics, processes, histogram, distributionByTribunal, hotCold }
+}
 
-  return NextResponse.json({ 
-    metrics, 
-    processes,
-    histogram,
-    distributionByTribunal,
-    hotCold,
-    updateFunnel
-  })
+export async function GET(request: NextRequest) {
+  const searchParams = request.nextUrl.searchParams
+  const oab_estado = searchParams.get('oab_estado')
+  const oab_numero = searchParams.get('oab_numero')
+  const limit = parseInt(searchParams.get('limit') || '100')
+
+  if (!oab_estado || !oab_numero) {
+    return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 })
+  }
+
+  const token = process.env.ESCAVADOR_API_TOKEN
+  if (!token) {
+    return NextResponse.json({ error: 'Escavador API not configured' }, { status: 503 })
+  }
+
+  const identifier = `oab:${oab_estado}:${oab_numero}`
+  if (!apiRateLimiter.check(identifier)) {
+    return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 })
+  }
+
+  const cacheKey = `escavador:processes:${oab_estado}:${oab_numero}:${limit}`
+  const cached = cacheGet<ReturnType<typeof buildResponse>>(cacheKey)
+  if (cached) return NextResponse.json(cached)
+
+  try {
+    const client = createEscavadorClient(token)
+    const { items, quantidade_processos } = await client.getProcesses(oab_estado, oab_numero, { limit })
+
+    const response = buildResponse(items, quantidade_processos)
+    cacheSet(cacheKey, response)
+    return NextResponse.json(response)
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Upstream error'
+    return NextResponse.json({ error: msg }, { status: 502 })
+  }
 }

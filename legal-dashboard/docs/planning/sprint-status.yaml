@@ -1,0 +1,46 @@
+generated: '2026-04-08T22:35:00Z'
+last_updated: '2026-04-08T22:35:00Z'
+project: Legal Dashboard (Inquest-like)
+project_key: legal-dashboard
+tracking_system: docs/stories
+story_location: docs/stories
+
+development_status:
+  # ── Epic 1: Fulfillment Engine ──────────────────────────────────────────────
+  epic-1:
+    status: in-progress
+    title: Fulfillment Engine — Infra + Core + Ops Dashboard
+
+  1-1-fulfillment-foundation:
+    status: done
+    title: "Fundação: Migrations + Types"
+    story_file: docs/stories/001-fulfillment-foundation.md
+
+  1-2-fulfillment-engine:
+    status: done
+    title: "Fulfillment Engine Core: processOrderSync, executeStep, processBatch, enqueueOrder"
+    story_file: docs/stories/002-fulfillment-engine.md
+
+  1-3-ops-dashboard:
+    status: backlog
+    title: "Ops Dashboard: /admin expandido com fulfillment_queue + steps reais"
+    story_file: docs/stories/003-ops-dashboard.md
+
+  1-4-client-tracking:
+    status: backlog
+    title: "Client Tracking: /api/reports/[token] + /meus-reports"
+    story_file: docs/stories/004-client-tracking.md
+
+  1-5-step-retry:
+    status: backlog
+    title: "Step Retry: POST /api/orders/[id]/fulfill"
+    story_file: docs/stories/005-step-retry.md
+
+  1-6-shop-inputs:
+    status: backlog
+    title: "Shop: coleta de required_inputs (OAB/CNJ) antes do checkout"
+    story_file: docs/stories/006-shop-inputs.md
+
+  # ── Retrospective ───────────────────────────────────────────────────────────
+  epic-1-retrospective:
+    status: optional

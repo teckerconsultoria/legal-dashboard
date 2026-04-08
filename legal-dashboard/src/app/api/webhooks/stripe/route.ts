@@ -3,6 +3,9 @@ import { createServiceClient } from '@/utils/supabase/server';
 import { stripe } from '@/lib/stripe';
 import Stripe from 'stripe';
 import { OrderStatus } from '@/types/orders';
+import { sendOrderPaid } from '@/lib/mailer';
+import { processOrderSync, enqueueOrder } from '@/lib/fulfillment-engine';
+import { FulfillmentSchemaZod } from '@/types/fulfillment';
 
 
 
@@ -100,7 +103,43 @@ export async function POST(request: NextRequest) {
             payment_intent_id: session.payment_intent as string,
             stripe_session_id: session.id,
           });
-          console.log(`Order ${orderId} status changed to paid`);
+
+          // Dispatch fulfillment: sync (Simples/Processo Único) ou enqueue (Smart/Pro)
+          const supabase = createServiceClient();
+          const { data: order } = await supabase
+            .from('orders')
+            .select('customer_email, order_items(sku:sku_catalog(name, fulfillment_schema))')
+            .eq('id', orderId)
+            .single();
+
+          const sku = (order?.order_items as unknown[])?.[0] as
+            | { sku: { name: string; fulfillment_schema: unknown } }
+            | undefined;
+
+          const schemaResult = sku?.sku?.fulfillment_schema
+            ? FulfillmentSchemaZod.safeParse(sku.sku.fulfillment_schema)
+            : null;
+
+          // Email de confirmação de pagamento
+          if (order?.customer_email && sku?.sku?.name) {
+            const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000';
+            sendOrderPaid({
+              to: order.customer_email,
+              orderNumber: orderId.slice(-8).toUpperCase(),
+              skuName: sku.sku.name,
+              dashboardUrl: `${baseUrl}/meus-reports`,
+            }).catch(err => console.error('[webhook] sendOrderPaid error:', err));
+          }
+
+          if (schemaResult?.success && schemaResult.data.sync) {
+            // SKU síncrono — processa inline (Simples, Processo Único)
+            await processOrderSync(orderId);
+          } else {
+            // SKU assíncrono — enfileira para cron (Smart, Pro)
+            await enqueueOrder(orderId);
+          }
+
+          console.log(`Order ${orderId} paid and dispatched to fulfillment`);
         }
         break;
       }
