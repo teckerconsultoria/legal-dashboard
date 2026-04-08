@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { AuthButton } from '@/components/AuthButton'
+import type { HealthMetrics, ProcessData, ProcessesResponse } from '@/types'
 
 const OAB_ESTADOS = [
   'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA',
@@ -10,31 +10,9 @@ const OAB_ESTADOS = [
   'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'
 ]
 
-interface HealthMetrics {
-  total: number
-  stalePercent: number
-  activeCount: number
-  inactiveCount: number
-  sampleProcessed: number
-}
-
-interface ProcessData {
-  numero: string
-  subject?: string
-  fonte_sigla?: string
-  status: string
-  data_ultima_verificacao?: string
-  daysSinceLastCheck: number
-}
-
-interface ProcessesResponse {
-  metrics: HealthMetrics
-  processes: ProcessData[]
-}
-
-function HealthMetricCard({ title, value, subtitle, color }: { title: string; value: string | number; subtitle?: string; color: string }) {
+function HealthMetricCard({ title, value, subtitle, color, tooltip }: { title: string; value: string | number; subtitle?: string; color: string; tooltip?: string }) {
   return (
-    <div className="bg-white rounded-lg shadow p-6">
+    <div className="bg-white rounded-lg shadow p-6" title={tooltip}>
       <p className="text-sm font-medium text-gray-500 mb-1">{title}</p>
       <p className={`text-3xl font-bold ${color}`}>{value}</p>
       {subtitle && <p className="text-sm text-gray-400">{subtitle}</p>}
@@ -49,7 +27,7 @@ function HealthPanel({ estado, numero }: { estado: string; numero: string }) {
       const params = new URLSearchParams({ oab_estado: estado, oab_numero: numero })
       const res = await fetch(`/api/processes?${params}`)
       if (!res.ok) throw new Error('Failed to fetch')
-      return res.json()
+      return res.json() as Promise<ProcessesResponse>
     },
     enabled: !!estado && !!numero,
   })
@@ -75,23 +53,77 @@ function HealthPanel({ estado, numero }: { estado: string; numero: string }) {
     )
   }
 
-  const { metrics } = data
+  const { metrics, histogram, hotCold, distributionByTribunal, processes } = data || {}
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <HealthMetricCard title="Total de Processos" value={metrics.total} subtitle="na carteira" color="text-blue-600" />
-        <HealthMetricCard title="Desatualizados" value={`${metrics.stalePercent}%`} subtitle="> 30 dias" color={metrics.stalePercent > 50 ? 'text-red-600' : 'text-yellow-600'} />
-        <HealthMetricCard title="Ativos" value={metrics.activeCount} color="text-green-600" />
-        <HealthMetricCard title="Inativos" value={metrics.inactiveCount} color="text-gray-600" />
+        <HealthMetricCard title="Total de Processos" value={metrics?.total ?? 0} subtitle="na carteira" color="text-blue-600" />
+        <HealthMetricCard title="Desatualizados" value={`${metrics?.stalePercent ?? 0}%`} subtitle="> 30 dias" color={(metrics?.stalePercent ?? 0) > 50 ? 'text-red-600' : 'text-yellow-600'} tooltip="Baseado em data da última verificação dos robôs" />
+        <HealthMetricCard title="Ativos" value={metrics?.activeCount ?? 0} color="text-green-600" />
+        <HealthMetricCard title="Inativos" value={metrics?.inactiveCount ?? 0} color="text-gray-600" />
       </div>
-      <p className="text-sm text-gray-400 text-right">*Baseado em {metrics.sampleProcessed} processos</p>
-      <CaseTable processes={data.processes || []} />
+      
+      {histogram && (
+        <div className="bg-white rounded-lg shadow p-6">
+          <h3 className="font-semibold mb-4">Histograma de Atualização</h3>
+          <div className="flex gap-2 h-32 items-end">
+            {histogram.map((h) => (
+              <div key={h.range} className="flex-1 flex flex-col items-center">
+                <div 
+                  className={`w-full ${h.count > 20 ? 'bg-red-500' : h.count > 10 ? 'bg-yellow-500' : 'bg-green-500'}`} 
+                  style={{ height: `${Math.max((h.count / 50) * 100, 5)}%` }}
+                />
+                <span className="text-xs mt-1">{h.count}</span>
+                <span className="text-xs text-gray-500">{h.range}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {hotCold && (
+        <div className="grid grid-cols-3 gap-4">
+          <div className="bg-green-50 rounded-lg p-4 text-center">
+            <p className="text-2xl font-bold text-green-600">{hotCold.quente}</p>
+            <p className="text-sm text-green-700">Quente (0-7 dias)</p>
+          </div>
+          <div className="bg-yellow-50 rounded-lg p-4 text-center">
+            <p className="text-2xl font-bold text-yellow-600">{hotCold.morno}</p>
+            <p className="text-sm text-yellow-700">Morno</p>
+          </div>
+          <div className="bg-red-50 rounded-lg p-4 text-center">
+            <p className="text-2xl font-bold text-red-600">{hotCold.frio}</p>
+            <p className="text-sm text-red-700">Frio (30+ dias)</p>
+          </div>
+        </div>
+      )}
+
+      {distributionByTribunal && distributionByTribunal.length > 0 && (
+        <div className="bg-white rounded-lg shadow p-6">
+          <h3 className="font-semibold mb-4">Distribuição por Tribunal</h3>
+          <div className="space-y-2">
+            {distributionByTribunal.slice(0, 5).map((t) => (
+              <div key={t.tribunal} className="flex items-center gap-2">
+                <span className="w-16 text-sm font-medium">{t.tribunal}</span>
+                <div className="flex-1 bg-gray-200 rounded-full h-2">
+                  <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${t.percent}%` }} />
+                </div>
+                <span className="text-sm text-gray-600 w-20">{t.count} ({t.percent}%)</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <p className="text-sm text-gray-400 text-right" title="Baseado em amostragem de processos">*Baseado em {metrics?.sampleProcessed ?? 0} processos</p>
+      <CaseTable processes={processes || []} />
     </div>
   )
 }
 
 function CaseDetailDrawer({ numero, onClose }: { numero: string; onClose: () => void }) {
+  const [requesting, setRequesting] = useState(false)
   const { data, isLoading } = useQuery<{ capa?: any; movimentacoes?: { items: any[] }; status?: any }>({
     queryKey: ['case-detail', numero],
     queryFn: async () => {
@@ -101,6 +133,23 @@ function CaseDetailDrawer({ numero, onClose }: { numero: string; onClose: () => 
     },
     enabled: !!numero,
   })
+
+  const requestUpdate = async (numero: string) => {
+    setRequesting(true)
+    try {
+      const res = await fetch(`/api/request-update/${encodeURIComponent(numero)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enviar_callback: true })
+      })
+      if (!res.ok) throw new Error('Failed')
+      alert('Atualização solicitada com sucesso!')
+    } catch {
+      alert('Erro ao solicitar atualização')
+    } finally {
+      setRequesting(false)
+    }
+  }
 
   if (isLoading) {
     return (
@@ -123,7 +172,12 @@ function CaseDetailDrawer({ numero, onClose }: { numero: string; onClose: () => 
             <h3 className="text-lg font-semibold">Detalhes do Processo</h3>
             <p className="text-sm text-gray-500 font-mono">{numero}</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => requestUpdate(numero)} disabled={requesting} className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:bg-gray-400">
+              {requesting ? 'Solicitando...' : 'Solicitar atualização'}
+            </button>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl ml-2">&times;</button>
+          </div>
         </div>
         <div className="p-6 space-y-6">
           {data?.status && (
@@ -213,7 +267,7 @@ function CaseTable({ processes }: { processes: ProcessData[] }) {
                   </span>
                 </td>
                 <td className="px-4 py-3 text-sm text-gray-500">
-                  {process.daysSinceLastCheck < 999 ? `${process.daysSinceLastCheck} dias atrás` : '-'}
+                  {(process.daysSinceLastCheck ?? 0) < 999 ? `${process.daysSinceLastCheck} dias atrás` : '-'}
                 </td>
                 <td className="px-4 py-3">
                   <button onClick={() => setSelectedCase(process.numero)} className="text-blue-600 hover:text-blue-700 text-sm">Ver detalhes</button>

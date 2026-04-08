@@ -1,22 +1,23 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { createClient } from '@/utils/supabase/client'
 
 export function AuthButton() {
-  const [user, setUser] = useState<any>(null)
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const supabase = createClient()
     
     supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user)
+      setIsAuthenticated(!!user)
       setLoading(false)
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, user) => {
-      setUser(user)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsAuthenticated(!!session)
       setLoading(false)
     })
 
@@ -33,7 +34,7 @@ export function AuthButton() {
     return <span className="text-gray-400">Loading...</span>
   }
 
-  if (user) {
+  if (isAuthenticated) {
     return (
       <button onClick={handleLogout} className="text-gray-600 hover:text-gray-900">
         Logout
@@ -42,8 +43,8 @@ export function AuthButton() {
   }
 
   return (
-    <a href="/login" className="text-blue-600 hover:text-blue-700">
+    <Link href="/login" className="text-blue-600 hover:text-blue-700">
       Login
-    </a>
+    </Link>
   )
 }

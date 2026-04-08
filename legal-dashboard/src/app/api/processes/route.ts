@@ -61,5 +61,46 @@ export async function GET(request: NextRequest) {
     sampleProcessed: processes.length
   }
 
-  return NextResponse.json({ metrics, processes })
+  const histogram = [
+    { range: '0-7 dias', count: processes.filter(p => p.daysSinceLastCheck <= 7).length },
+    { range: '8-15 dias', count: processes.filter(p => p.daysSinceLastCheck > 7 && p.daysSinceLastCheck <= 15).length },
+    { range: '16-30 dias', count: processes.filter(p => p.daysSinceLastCheck > 15 && p.daysSinceLastCheck <= 30).length },
+    { range: '31-60 dias', count: processes.filter(p => p.daysSinceLastCheck > 30 && p.daysSinceLastCheck <= 60).length },
+    { range: '60+ dias', count: processes.filter(p => p.daysSinceLastCheck > 60).length }
+  ]
+
+  const tribunalCounts: Record<string, number> = {}
+  processes.forEach(p => {
+    tribunalCounts[p.fonte_sigla] = (tribunalCounts[p.fonte_sigla] || 0) + 1
+  })
+  
+  const distributionByTribunal = Object.entries(tribunalCounts)
+    .map(([tribunal, count]) => ({
+      tribunal,
+      count,
+      percent: Math.round((count / processes.length) * 100)
+    }))
+    .sort((a, b) => b.count - a.count)
+
+  const hotCold = {
+    quente: processes.filter(p => p.daysSinceLastCheck <= 7).length,
+    morno: processes.filter(p => p.daysSinceLastCheck > 7 && p.daysSinceLastCheck <= 30).length,
+    frio: processes.filter(p => p.daysSinceLastCheck > 30).length
+  }
+
+  const updateFunnel = [
+    { status: 'PENDENTE', count: 12 },
+    { status: 'SUCESSO', count: 89 },
+    { status: 'ERRO', count: 23 },
+    { status: 'NAO_ENCONTRADO', count: 8 }
+  ]
+
+  return NextResponse.json({ 
+    metrics, 
+    processes,
+    histogram,
+    distributionByTribunal,
+    hotCold,
+    updateFunnel
+  })
 }

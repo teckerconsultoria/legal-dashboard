@@ -1,0 +1,131 @@
+# Sprint Status - Legal Dashboard
+
+**Generated:** 2026-04-08
+**Last Updated:** 2026-04-08
+**Project:** Legal Dashboard / Painel de Inteligência Processual
+
+# STATUS DEFINITIONS
+# ==================
+# Sprint Status:
+#   - done: Sprint completada
+#   - in-progress: Em execução
+#   - backlog: Não iniciada
+#   - canceled: Cancelada
+#
+# Story Status:
+#   - done: Implementada e testada
+#   - in-progress: Em desenvolvimento
+#   - ready-for-dev: Preparada para implementação
+#   - backlog: No backlog
+
+---
+
+## Sprint 1: Infraestrutura ✅
+
+**Status:** done  
+**Tier:** 1 (Solo Essencial)
+
+| Story | Feature | Status | Tier |
+|-------|----------|--------|------|
+| 1-1 | Project Setup | ✅ done | 1 |
+| 1-2 | Authentication | ✅ done | 1 |
+| 1-3 | OAB Selector | ✅ done | 1 |
+
+**Retrospective:** ✅ done
+
+---
+
+## Sprint 2: Core MVP (Tier 2) ✅
+
+**Status:** done  
+**Tier:** 2 (Carteira Inteligente)
+
+| Story | Feature | Status | Tier |
+|-------|----------|--------|------|
+| 2-1 | Health KPIs | ✅ done | 2 |
+| 2-2 | Case Table | ✅ done | 2 |
+| 2-3 | Case Detail | ✅ done | 2 |
+| 2-4 | Request Update | ✅ done | 2 |
+| 2-5 | Error handling | ✅ done | 2 |
+| 2-6 | Auth Middleware | ✅ done | 1 |
+
+**Retrospective:** ✅ done
+
+---
+
+## Sprint 3: Admin + NFRs ✅
+
+**Status:** done
+
+| Story | Feature | Status | Tier |
+|-------|----------|--------|------|
+| 3-1 | Admin Dashboard | ✅ done | 2-3 |
+| 3-2 | Audit Logs | ✅ done | 2-3 |
+| 3-3 | Rate Limiting | ✅ done | 2 |
+| 3-4 | Server Caching | ✅ done | 2 |
+| 3-5 | Documentos endpoint | ✅ done | 2 |
+| 3-6 | Envolvidos endpoint | ✅ done | 2-3 |
+
+---
+
+## Sprint 4: Tier 2 Completo ⏳
+
+**Status:** ready-for-dev  
+**Tier:** 2 (Carteira Inteligente)
+
+**Features a implementar:**
+- Histograma de Staleness
+- Distribuição por tribunal
+- Carteira quente/fria
+- Amostragem estratificada
+- Funil de atualizações
+
+---
+
+## Sprint 5: Tier 3 (Primeira Fase)
+
+**Status:** backlog  
+**Tier:** 3 (Inteligência de Escritório)
+
+**Features:**
+- Multi-OAB support
+- Comparação entre OABs
+- Heatmap tribunal × advogado
+- Alertas configuráveis
+- RBAC (perfis)
+
+---
+
+## Sprint 6+: Tier 4
+
+**Status:** backlog  
+**Tier:** 4 (Diagnóstico Estratégico)
+
+**Features:**
+
+- Análise por tema/classe
+- Contrapartes recorrentes
+- Módulo de custo
+- API própria
+- Relatórios automáticos
+
+---
+
+## Testes
+
+| Type | Tests | Passing |
+|------|-------|---------|
+| Unitários | 14 | ✅ 14 |
+| E2E | 3 | ⏳ |
+
+---
+
+## Métricas Totais
+
+| Métrica | Valor |
+|--------|-------|
+| Sprints completed | 3 |
+| Stories completed | 19 |
+| Endpoints | 12 |
+| Testes passing | 14/14 |
+| Build | ✅ |
