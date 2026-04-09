@@ -1,4 +1,49 @@
+import { cacheGet, cacheSet, fileCacheGet, fileCacheSet, saveUpdateRequest, getUpdateRequest, listUpdateRequests, getPendingUpdates, UpdateRequest } from '@/lib/cache'
+
 const ESCAVADOR_BASE_URL = 'https://api.escavador.com/api/v2'
+
+// ─── Staleness Thresholds (Economic Inviability) ───────────────────────────────
+// Configurável via env vars
+
+function getStalenessThresholds() {
+  return {
+    // Processos com staleness acima deste valor não são atualizados automaticamente
+    updateThresholdDays: Number(process.env.STALENESS_UPDATE_THRESHOLD) || 365,
+    // Processos acima deste valor são marcados como Economic Inviability (não atualizar)
+    eiThresholdDays: Number(process.env.STALENESS_EI_THRESHOLD) || 730,
+  }
+}
+
+export function isEconomicInviability(daysSinceLastCheck: number | null): boolean {
+  if (daysSinceLastCheck === null) return false
+  const { eiThresholdDays } = getStalenessThresholds()
+  return daysSinceLastCheck > eiThresholdDays
+}
+
+export function shouldRequestUpdate(daysSinceLastCheck: number | null): boolean {
+  if (daysSinceLastCheck === null) return false
+  const { updateThresholdDays, eiThresholdDays } = getStalenessThresholds()
+  // Atualizar apenas se acima do threshold mas abaixo do EI
+  return daysSinceLastCheck > updateThresholdDays && daysSinceLastCheck <= eiThresholdDays
+}
+
+// ─── Cache mode ──────────────────────────────────────────────────────────────
+// ESCAVADOR_CACHE_MODE:
+//   none   → sem cache (default, recomendado para CI)
+//   memory → MemoryCache in-process (evita chamadas duplicadas dentro de um run)
+//   file   → persiste em .cache/escavador/ entre re-runs (dev local)
+//
+// Configure em .env.local:
+//   ESCAVADOR_CACHE_MODE=file
+//   ESCAVADOR_CACHE_TTL_MS=3600000   # opcional, default 1h (só afeta modo memory)
+
+type CacheMode = 'none' | 'memory' | 'file'
+
+function getCacheMode(): CacheMode {
+  const mode = process.env.ESCAVADOR_CACHE_MODE ?? 'none'
+  if (mode === 'memory' || mode === 'file') return mode
+  return 'none'
+}
 
 // Internal types (what our API exposes)
 export interface LawyerSummary {
@@ -78,19 +123,35 @@ interface RawLawyerSummary {
   quantidade_processos: number
 }
 
+interface RawProcessFonte {
+  sigla: string
+  tipo?: string
+  grau?: number
+  grau_formatado?: string
+  status_predito?: string
+}
+
 interface RawProcessItem {
   numero_cnj: string
   data_ultima_verificacao?: string
   status?: string
   assunto?: string
   assunto_principal?: { nome: string }
-  fonte?: { sigla: string; grau?: string; grau_formatado?: string }
-  fontes?: Array<{ sigla: string; grau?: string; grau_formatado?: string }>
+  assunto_principal_normalizado?: { nome: string }
+  // A API retorna fontes[] (nunca fonte singular)
+  fontes?: RawProcessFonte[]
 }
 
 interface RawProcessesResponse {
   items: RawProcessItem[]
-  quantidade_processos: number
+  quantidade_processos?: number              // presente no endpoint /resumo, ausente em /processos
+  advogado_encontrado?: {
+    nome: string
+    tipo: string
+    quantidade_processos: number
+  }
+  links?: { next?: string | null }
+  paginator?: { per_page: number }
 }
 
 function daysSince(dateStr?: string): number {
@@ -100,11 +161,17 @@ function daysSince(dateStr?: string): number {
 }
 
 function transformProcess(raw: RawProcessItem): ProcessItem {
-  const fonte = raw.fonte ?? raw.fontes?.[0]
+  // Prioriza fonte do tipo TRIBUNAL; cai no primeiro disponível se não houver
+  const fonte = raw.fontes?.find(f => f.tipo === 'TRIBUNAL') ?? raw.fontes?.[0]
   const grau = fonte?.grau_formatado ?? (fonte?.grau ? `${fonte.grau}º` : '1º')
-  const subject = raw.assunto_principal?.nome ?? raw.assunto ?? 'Procedimento Comum'
+  const subject = raw.assunto_principal_normalizado?.nome
+    ?? raw.assunto_principal?.nome
+    ?? raw.assunto
+    ?? 'Procedimento Comum'
   const days = daysSince(raw.data_ultima_verificacao)
-  const status = raw.status?.toUpperCase() ?? (days <= 30 ? 'ATIVO' : 'INATIVO')
+  // Usa status_predito do Escavador quando disponível — mais preciso que daysSince
+  const statusPredito = fonte?.status_predito?.toUpperCase()
+  const status = raw.status?.toUpperCase() ?? statusPredito ?? (days <= 30 ? 'ATIVO' : 'INATIVO')
 
   return {
     numero: raw.numero_cnj,
@@ -134,6 +201,18 @@ export class EscavadorClient {
       Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v))
     }
 
+    // ── Cache lookup (apenas GET) ─────────────────────────────────────────
+    const mode = getCacheMode()
+    const cacheKey = `esc:GET:${endpoint}:${JSON.stringify(params ?? {})}`
+
+    if (method === 'GET' && mode !== 'none') {
+      const hit = mode === 'file'
+        ? fileCacheGet<T>(cacheKey)
+        : cacheGet<T>(cacheKey)
+      if (hit !== null) return hit
+    }
+
+    // ── Fetch real ────────────────────────────────────────────────────────
     const response = await fetch(url.toString(), {
       method,
       headers: {
@@ -148,7 +227,19 @@ export class EscavadorClient {
       throw new Error(`Escavador API error: ${response.status}`)
     }
 
-    return response.json()
+    const result: T = await response.json()
+
+    // ── Cache store ───────────────────────────────────────────────────────
+    if (method === 'GET' && mode !== 'none') {
+      if (mode === 'file') {
+        fileCacheSet(cacheKey, result)
+      } else {
+        const ttl = Number(process.env.ESCAVADOR_CACHE_TTL_MS) || 3_600_000
+        cacheSet(cacheKey, result, ttl)
+      }
+    }
+
+    return result
   }
 
   async getLawyerSummary(
@@ -168,17 +259,71 @@ export class EscavadorClient {
     oab_numero: string,
     options?: { limit?: number; status?: string; data_minima?: string; data_maxima?: string }
   ): Promise<ProcessesResponse> {
-    const params: Record<string, string> = { oab_estado, oab_numero }
-    if (options?.limit) params.limit = String(options.limit)
+    // Busca todas as páginas via cursor — fiel ao mapeamento de requisições por SKU.
+    // O param `limit` controla o tamanho de cada página (max 100), não o total.
+    // A paginação continua até `links.next` ser null/ausente.
+    const pageSize = Math.min(options?.limit ?? 100, 100)
+    const params: Record<string, string> = {
+      oab_estado,
+      oab_numero,
+      limit: String(pageSize),
+    }
     if (options?.status) params.status = options.status
     if (options?.data_minima) params.data_minima = options.data_minima
     if (options?.data_maxima) params.data_maxima = options.data_maxima
 
-    const raw = await this.request<RawProcessesResponse>('/advogado/processos', params)
-    return {
-      items: raw.items.map(transformProcess),
-      quantidade_processos: raw.quantidade_processos,
+    const allItems: ProcessItem[] = []
+    let quantidade_processos = 0
+    let nextUrl: string | null | undefined = undefined // undefined = primeira chamada
+
+    while (true) {
+      let raw: RawProcessesResponse
+
+      if (nextUrl === undefined) {
+        // Primeira página — usa o método request normal (com cache por params)
+        raw = await this.request<RawProcessesResponse>('/advogado/processos', params)
+      } else {
+        // Páginas seguintes — URL completa com cursor (inclui o próprio host)
+        // O cache usa a URL completa como key
+        const cursorKey = `esc:GET:cursor:${nextUrl}`
+        const mode = getCacheMode()
+        const cached = mode === 'file'
+          ? fileCacheGet<RawProcessesResponse>(cursorKey)
+          : mode === 'memory' ? cacheGet<RawProcessesResponse>(cursorKey) : null
+
+        if (cached) {
+          raw = cached
+        } else {
+          const res = await fetch(nextUrl, {
+            headers: {
+              Authorization: `Bearer ${this.token}`,
+              'X-Requested-With': 'XMLHttpRequest',
+            },
+          })
+          if (!res.ok) throw new Error(`Escavador API error: ${res.status}`)
+          raw = await res.json()
+          if (mode === 'file') fileCacheSet(cursorKey, raw)
+          else if (mode === 'memory') {
+            const ttl = Number(process.env.ESCAVADOR_CACHE_TTL_MS) || 3_600_000
+            cacheSet(cursorKey, raw, ttl)
+          }
+        }
+      }
+
+      allItems.push(...(raw.items ?? []).map(transformProcess))
+
+      // Total real vem de advogado_encontrado (apenas na primeira página)
+      if (raw.advogado_encontrado?.quantidade_processos) {
+        quantidade_processos = raw.advogado_encontrado.quantidade_processos
+      }
+
+      // Continua se houver próxima página
+      const next = raw.links?.next
+      if (!next) break
+      nextUrl = next
     }
+
+    return { items: allItems, quantidade_processos }
   }
 
   async getCaseCNJ(numero_cnj: string): Promise<unknown> {

@@ -1,5 +1,5 @@
 generated: '2026-04-08T22:35:00Z'
-last_updated: '2026-04-08T22:35:00Z'
+last_updated: '2026-04-09T00:00:00Z'
 project: Legal Dashboard (Inquest-like)
 project_key: legal-dashboard
 tracking_system: docs/stories
@@ -22,9 +22,13 @@ development_status:
     story_file: docs/stories/002-fulfillment-engine.md
 
   1-3-ops-dashboard:
-    status: backlog
+    status: done
     title: "Ops Dashboard: /admin expandido com fulfillment_queue + steps reais"
     story_file: docs/stories/003-ops-dashboard.md
+    e2e_verified: '2026-04-09'
+    e2e_suites:
+      - e2e/pilots/02-operator-dashboard.spec.ts  # 9/9 passed
+      - e2e/pilots/04-admin-order-detail.spec.ts  # 3/3 passed (fix: beforeAll timeout + assign Bearer fallback + OT-08 timing)
 
   1-4-client-tracking:
     status: backlog

@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>API Escavador - Análise de Qualidade por Piloto</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.6; }
+    .container { max-width: 1400px; margin: 0 auto; padding: 2rem; }
+    h1 { font-size: 1.8rem; margin-bottom: 0.5rem; color: #fff; }
+    .subtitle { color: #94a3b8; margin-bottom: 2rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+    .card { background: #1e293b; border-radius: 12px; padding: 1.5rem; border: 1px solid #334155; }
+    .card h2 { font-size: 1.2rem; color: #38bdf8; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; }
+    .pilot-badge { display: inline-block; background: #0ea5e9; color: #fff; padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+    .stat { display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid #334155; }
+    .stat:last-child { border-bottom: none; }
+    .stat-label { color: #94a3b8; }
+    .stat-value { font-weight: 600; }
+    .stat-value.warning { color: #f59e0b; }
+    .stat-value.danger { color: #ef4444; }
+    .stat-value.success { color: #22c55e; }
+    .progress-bar { height: 8px; background: #334155; border-radius: 4px; overflow: hidden; margin-top: 0.25rem; }
+    .progress-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+    .progress-fill.danger { background: #ef4444; }
+    .progress-fill.warning { background: #f59e0b; }
+    .progress-fill.success { background: #22c55e; }
+    .tribunal-list { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
+    .tribunal-tag { background: #334155; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; }
+    .tribunal-tag.major { background: #0ea5e9; color: #fff; }
+    .matrix { display: grid; grid-template-columns: 1fr repeat(3, 1fr); gap: 1px; background: #334155; border-radius: 8px; overflow: hidden; }
+    .matrix-header { background: #1e293b; padding: 0.75rem; font-weight: 600; text-align: center; }
+    .matrix-cell { background: #0f172a; padding: 0.75rem; text-align: center; }
+    .matrix-cell.highlight { background: #1e293b; font-weight: 600; }
+    .matrix-cell.danger { color: #ef4444; }
+    .matrix-cell.warning { color: #f59e0b; }
+    .matrix-cell.success { color: #22c55e; }
+    .recommendations { background: #1e293b; border-radius: 12px; padding: 1.5rem; border: 1px solid #334155; }
+    .recommendations h2 { color: #38bdf8; margin-bottom: 1rem; }
+    .rec-item { display: flex; gap: 1rem; padding: 0.75rem; background: #0f172a; border-radius: 8px; margin-bottom: 0.75rem; }
+    .rec-priority { font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: 4px; font-weight: 600; }
+    .rec-priority.high { background: #dc2626; color: #fff; }
+    .rec-priority.medium { background: #d97706; color: #fff; }
+    .rec-content { flex: 1; }
+    .rec-title { font-weight: 600; margin-bottom: 0.25rem; }
+    .rec-desc { font-size: 0.85rem; color: #94a3b8; }
+    .chart-container { position: relative; height: 250px; margin-top: 1rem; }
+    .no-data { color: #64748b; font-style: italic; text-align: center; padding: 2rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📊 API Escavador - Análise de Qualidade</h1>
+    <p class="subtitle">Framework: bmad-party-mode | Pilotos: Renato (PB/24398), Victor (PB/13477), Rodrigo (PB/26665)</p>
+
+    <div class="grid">
+      <!-- Renato -->
+      <div class="card">
+        <h2>🏛 Renato <span class="pilot-badge">PB/24398</span></h2>
+        <div class="stat"><span class="stat-label">Resumo API</span><span class="stat-value">315</span></div>
+        <div class="stat"><span class="stat-label">Processos Coletados</span><span class="stat-value">214</span></div>
+        <div class="stat"><span class="stat-label">Staleness p50</span><span class="stat-value warning">365 dias (1 ano)</span></div>
+        <div class="stat"><span class="stat-label">Staleness p90</span><span class="stat-value danger">1095 dias (3 anos)</span></div>
+        <div class="stat">
+          <span class="stat-label">% Stale (>1 ano)</span>
+          <span class="stat-value warning">28%</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill warning" style="width: 28%"></div></div>
+        <div class="stat">
+          <span class="stat-label">% Hot (>10 movs)</span>
+          <span class="stat-value success">92%</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill success" style="width: 92%"></div></div>
+        <div class="tribunal-list">
+          <span class="tribunal-tag major">TJPB 149</span>
+          <span class="tribunal-tag">TRF5 31</span>
+          <span class="tribunal-tag">TRT-13 16</span>
+          <span class="tribunal-tag">TJPE 4</span>
+          <span class="tibunal-tag">TJSP 4</span>
+          <span class="tribunal-tag">+4</span>
+        </div>
+      </div>
+
+      <!-- Victor -->
+      <div class="card">
+        <h2>🏛 Victor <span class="pilot-badge">PB/13477</span></h2>
+        <div class="stat"><span class="stat-label">Resumo API</span><span class="stat-value">544</span></div>
+        <div class="stat"><span class="stat-label">Processos Coletados</span><span class="stat-value">443</span></div>
+        <div class="stat"><span class="stat-label">Staleness p50</span><span class="stat-value warning">365 dias (1 ano)</span></div>
+        <div class="stat"><span class="stat-label">Staleness p90</span><span class="stat-value danger">1095 dias (3 anos)</span></div>
+        <div class="stat">
+          <span class="stat-label">% Stale (>1 ano)</span>
+          <span class="stat-value danger">38%</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill danger" style="width: 38%"></div></div>
+        <div class="stat">
+          <span class="stat-label">% Hot (>10 movs)</span>
+          <span class="stat-value success">96%</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill success" style="width: 96%"></div></div>
+        <div class="tribunal-list">
+          <span class="tribunal-tag major">TJPB 319</span>
+          <span class="tribunal-tag">TRF5 57</span>
+          <span class="tribunal-tag">TRT-13 53</span>
+          <span class="tribunal-tag">+7</span>
+        </div>
+      </div>
+
+      <!-- Rodrigo -->
+      <div class="card">
+        <h2>🏛 Rodrigo <span class="pilot-badge">PB/26665</span></h2>
+        <div class="stat"><span class="stat-label">Resumo API</span><span class="stat-value">50</span></div>
+        <div class="stat"><span class="stat-label">Processos Coletados</span><span class="stat-value">0</span></div>
+        <div class="no-data">Sem dados de processos em cache</div>
+        <p style="color: #64748b; font-size: 0.85rem; margin-top: 1rem;">Possível causa: Paginação não completada ou cache limpo</p>
+      </div>
+    </div>
+
+    <!-- Matriz de Qualidade -->
+    <div class="card" style="margin-bottom: 2rem;">
+      <h2>📋 Matriz de Qualidade Piloto × Dimensão</h2>
+      <div class="matrix">
+        <div class="matrix-header">Dimensão</div>
+        <div class="matrix-header">Renato (24398)</div>
+        <div class="matrix-header">Victor (13477)</div>
+        <div class="matrix-header">Rodrigo (26665)</div>
+
+        <div class="matrix-cell highlight">Volume (resumo)</div>
+        <div class="matrix-cell">315</div>
+        <div class="matrix-cell">544</div>
+        <div class="matrix-cell">50</div>
+
+        <div class="matrix-cell highlight">Coletado/Resumo</div>
+        <div class="matrix-cell success">68% (214/315)</div>
+        <div class="matrix-cell success">81% (443/544)</div>
+        <div class="matrix-cell danger">0% (0/50)</div>
+
+        <div class="matrix-cell highlight">Completude</div>
+        <div class="matrix-cell success">✅ 100%</div>
+        <div class="matrix-cell success">✅ 100%</div>
+        <div class="matrix-cell">⚠️ N/A</div>
+
+        <div class="matrix-cell highlight">Staleness p50</div>
+        <div class="matrix-cell warning">365 dias</div>
+        <div class="matrix-cell warning">365 dias</div>
+        <div class="matrix-cell">N/A</div>
+
+        <div class="matrix-cell highlight">Staleness p90</div>
+        <div class="matrix-cell danger">1095 dias</div>
+        <div class="matrix-cell danger">1095 dias</div>
+        <div class="matrix-cell">N/A</div>
+
+        <div class="matrix-cell highlight">% Stale >1ano</div>
+        <div class="matrix-cell warning">28%</div>
+        <div class="matrix-cell danger">38%</div>
+        <div class="matrix-cell">N/A</div>
+
+        <div class="matrix-cell highlight">% Hot (>10 movs)</div>
+        <div class="matrix-cell success">92%</div>
+        <div class="matrix-cell success">96%</div>
+        <div class="matrix-cell">N/A</div>
+
+        <div class="matrix-cell highlight">Tribunal Dominante</div>
+        <div class="matrix-cell">TJPB (70%)</div>
+        <div class="matrix-cell">TJPB (72%)</div>
+        <div class="matrix-cell">N/A</div>
+      </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="grid">
+      <div class="card">
+        <h2>📈 Distribuição de Staleness</h2>
+        <div class="chart-container">
+          <canvas id="stalenessChart"></canvas>
+        </div>
+      </div>
+      <div class="card">
+        <h2>📊 Status Predito</h2>
+        <div class="chart-container">
+          <canvas id="statusChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recomendações -->
+    <div class="recommendations">
+      <h2>🎯 Actionable Items para Roadmap</h2>
+      
+      <div class="rec-item">
+        <span class="rec-priority high">HIGH</span>
+        <div class="rec-content">
+          <div class="rec-title">Expor stale buckets na UI</div>
+          <div class="rec-desc">Mostrar visualmente processos com >1 ano sem atualização. Usar color coding: verde (<30d), amarelo (30-365d), vermelho (>365d).</div>
+        </div>
+      </div>
+
+      <div class="rec-item">
+        <span class="rec-priority high">HIGH</span>
+        <div class="rec-content">
+          <div class="rec-title">Tratar null em campos obrigatórios</div>
+          <div class="rec-desc">Implementar fallback strategy para campos como "tempo_desde_ultima_verificacao" null. Sugestão: marcar como "desconhecido" e excluded from staleness calc.</div>
+        </div>
+      </div>
+
+      <div class="rec-item">
+        <span class="rec-priority high">HIGH</span>
+        <div class="rec-content">
+          <div class="rec-title">Debug Rodrigo (26665) - 0 processos</div>
+          <div class="rec-desc">Investigar por que nenhum processo foi coletado mesmo com 50 no resumo. Verificar se paginação completada corretamente ou se há erro silencioso.</div>
+        </div>
+      </div>
+
+      <div class="rec-item">
+        <span class="rec-priority medium">MED</span>
+        <div class="rec-content">
+          <div class="rec-title">Cache com metadados de staleness</div>
+          <div class="rec-desc">Armazenar timestamp de fetch por processo para calcular staleness real (vs string "há X dias"). Permite tracking de evolução.</div>
+        </div>
+      </div>
+
+      <div class="rec-item">
+        <span class="rec-priority medium">MED</span>
+        <div class="rec-content">
+          <div class="rec-title">Dashboard de cobertura resumo vs coletado</div>
+          <div class="rec-desc">Monitorar gaps entre quantidade no resumo e processos realmente baixados. Alertas quando diferença > threshold (ex: 20%).</div>
+        </div>
+      </div>
+
+      <div class="rec-item">
+        <span class="rec-priority medium">MED</span>
+        <div class="rec-content">
+          <div class="rec-title">Expor distribuição de tribunais por advogado</div>
+          <div class="rec-desc">Useful para priorização de scraping: focar em tribunais com mais volume de cada OAB.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Staleness distribution chart
+    const stalenessCtx = document.getElementById('stalenessChart').getContext('2d');
+    new Chart(stalenessCtx, {
+      type: 'bar',
+      data: {
+        labels: ['<30 dias', '30-90 dias', '90-180 dias', '180-365 dias', '1-2 anos', '2-3 anos', '>3 anos'],
+        datasets: [
+          {
+            label: 'Renato (24398)',
+            data: [7, 14, 14, 11, 72, 32, 21],
+            backgroundColor: '#0ea5e9'
+          },
+          {
+            label: 'Victor (13477)',
+            data: [24, 27, 17, 14, 87, 84, 89],
+            backgroundColor: '#22c55e'
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom' } },
+        scales: {
+          x: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } },
+          y: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } }
+        }
+      }
+    });
+
+    // Status distribution chart
+    const statusCtx = document.getElementById('statusChart').getContext('2d');
+    new Chart(statusCtx, {
+      type: 'doughnut',
+      data: {
+        labels: ['ATIVO', 'INATIVO', 'ND'],
+        datasets: [{
+          data: [79, 134, 1],
+          backgroundColor: ['#22c55e', '#ef4444', '#64748b'],
+          label: 'Renato'
+        }, {
+          data: [138, 303, 2],
+          backgroundColor: ['#22c55e', '#ef4444', '#64748b'],
+          label: 'Victor'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom' } }
+      }
+    });
+  </script>
+</body>
+</html>

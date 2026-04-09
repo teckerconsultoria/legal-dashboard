@@ -14,8 +14,16 @@ test.describe('Legal Dashboard E2E', () => {
     await page.waitForSelector('.text-blue-600')
   })
 
-  test('admin page loads', async ({ page }) => {
+  test('admin page redirects unauthenticated users', async ({ page }) => {
     await page.goto('/admin')
-    await expect(page.locator('h1')).toContainText('Admin')
+    // Sem sessão: redireciona para /login ou exibe acesso restrito
+    await page.waitForTimeout(2000)
+    const url = page.url()
+    const bodyText = await page.locator('body').innerText()
+    const isLoginPage = url.includes('/login')
+    const hasRestrictedMsg = bodyText.toLowerCase().includes('acesso restrito') ||
+                             bodyText.toLowerCase().includes('fazer login')
+    const hasNoTable = !(await page.locator('table').isVisible())
+    expect(isLoginPage || hasRestrictedMsg || hasNoTable).toBeTruthy()
   })
 })

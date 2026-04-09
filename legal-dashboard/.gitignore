@@ -12,6 +12,10 @@
 
 # testing
 /coverage
+/test-results
+
+# escavador file cache (dev local — ESCAVADOR_CACHE_MODE=file)
+/.cache
 
 # next.js
 /.next/

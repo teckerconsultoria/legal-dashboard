@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
           .update({ status: 'done' })
           .eq('id', row.id)
 
-        return { orderId: row.order_id, ...result }
+        return { processedOrderId: row.order_id, ...result }
       } catch (err) {
         const nextAttempt = row.attempt_count + 1
         // SCHEMA_INVALID nunca vai mudar — morte imediata sem retry
